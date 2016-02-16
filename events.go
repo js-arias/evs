@@ -34,7 +34,7 @@ var evFlip = &cmdapp.Command{
 	Short: "flip search with four events",
 	Long: `
 Ev.flip searches with the flipping algorithm for the most parsimonious
-biogeographic history using the four event model.
+biogeographic history using the geographically explicit event model.
 
 The answer will be send to the standard output with the following columns:
 	Tree	Tree identifier
@@ -85,8 +85,8 @@ Options are:
 
     -z number
     --size number
-      If set, the indicated the value of the ancestral_area / number will be
-      used as extra-cost on internal nodes not based on vicariance.
+      If set, the indicated the value of the ancestral_range / number will be
+      used as extra-cost on internal nodes.
 	`,
 }
 
@@ -371,8 +371,8 @@ Options are:
 
     -z number
     --size number
-      If set, the indicated the value of the ancestral_area / number will be
-      used as extra-cost on each internal nodes not based on vicariance.
+      If set, the indicated the value of the ancestral_range / number will be
+      used as extra-cost on each internal nodes.
 	`,
 }
 

@@ -10,8 +10,8 @@ var about = &cmdapp.Command{
 	UsageLine: "about",
 	Short:     "about Evs",
 	Long: `
-Evs implements the four event biogeographic model for phylogenetic
-biogeography using explicit terminal distributions. The main objective of the
+Evs implements the geographically explicit event model for phylogenetic
+biogeography using explicit terminal ranges. The main objective of the
 method is to optimize both the ancestral distribution and  the biogeographic
 event associated with each node.
 
