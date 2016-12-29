@@ -17,7 +17,7 @@ import (
 type Node struct {
 	Level int
 	Nest  int
-	X     int
+	X     float64
 	Y     int
 	TopY  int
 	BotY  int
@@ -29,23 +29,32 @@ type Tree struct {
 	Nodes []Node
 }
 
-func prepareTree(t *tree.Tree, stepX, stepY int) *Tree {
+func prepareTree(t *tree.Tree, stepX, stepY int, useLen bool) *Tree {
 	tv := &Tree{
 		ID:    t.ID,
 		Tree:  t,
 		Nodes: make([]Node, len(t.Nodes)),
 	}
 	y := 0
-	tv.prepareNode(t.Root, &y, stepY)
-	for i := range tv.Nodes {
-		tv.Nodes[i].X = ((tv.Nodes[0].Level - tv.Nodes[i].Level) * stepX) + 5
+	tv.prepareNode(t.Root, &y, stepX, stepY, useLen)
+	if !useLen {
+		for i := range tv.Nodes {
+			tv.Nodes[i].X = (float64(tv.Nodes[0].Level-tv.Nodes[i].Level) * float64(stepX)) + 5
+		}
 	}
 	return tv
 }
 
-func (tv *Tree) prepareNode(n *tree.Node, y *int, stepY int) {
+func (tv *Tree) prepareNode(n *tree.Node, y *int, stepX, stepY int, useLen bool) {
 	if n.Anc != nil {
 		tv.Nodes[n.Index].Nest = tv.Nodes[n.Anc.Index].Nest + 1
+	}
+	if useLen {
+		if n.Anc == nil {
+			tv.Nodes[n.Index].X = 5
+		} else {
+			tv.Nodes[n.Index].X = tv.Nodes[n.Anc.Index].X + (n.Len * float64(stepX))
+		}
 	}
 	if n.First == nil {
 		tv.Nodes[n.Index].Y = (*y * stepY) + 5
@@ -55,7 +64,7 @@ func (tv *Tree) prepareNode(n *tree.Node, y *int, stepY int) {
 	topY := 640000 * stepY
 	botY := -1
 	for d := n.First; d != nil; d = d.Sister {
-		tv.prepareNode(d, y, stepY)
+		tv.prepareNode(d, y, stepX, stepY, useLen)
 		if tv.Nodes[d.Index].Level >= tv.Nodes[n.Index].Level {
 			tv.Nodes[n.Index].Level = tv.Nodes[d.Index].Level + 1
 		}
@@ -80,7 +89,7 @@ func arrow(x int, y int, top bool) string {
 }
 
 // SVG creates an svg version of a list of trees.
-func SVG(ts []*tree.Tree, recs []*events.Recons, stepX, stepY int) error {
+func SVG(ts []*tree.Tree, recs []*events.Recons, stepX, stepY int, useLen bool) error {
 	if stepX <= 0 {
 		stepX = 10
 	}
@@ -91,7 +100,7 @@ func SVG(ts []*tree.Tree, recs []*events.Recons, stepX, stepY int) error {
 	// draws the trees (with node ids)
 	tvmap := make(map[string]*Tree)
 	for _, t := range ts {
-		tv := prepareTree(t, stepX, stepY)
+		tv := prepareTree(t, stepX, stepY, useLen)
 		tvmap[t.ID] = tv
 		f, err := os.Create(t.ID + ".svg")
 		if err != nil {
@@ -354,9 +363,9 @@ func SVG(ts []*tree.Tree, recs []*events.Recons, stepX, stepY int) error {
 				}
 				f := rc.Rec[i].SetL
 				if tv.Nodes[f].Y > tv.Nodes[i].Y {
-					poly.Attr[0].Value = arrow(tv.Nodes[i].X, tv.Nodes[i].Y+2, false)
+					poly.Attr[0].Value = arrow(int(tv.Nodes[i].X), tv.Nodes[i].Y+2, false)
 				} else {
-					poly.Attr[0].Value = arrow(tv.Nodes[i].X, tv.Nodes[i].Y-2, true)
+					poly.Attr[0].Value = arrow(int(tv.Nodes[i].X), tv.Nodes[i].Y-2, true)
 				}
 				e.EncodeToken(poly)
 				e.EncodeToken(poly.End())
@@ -372,9 +381,9 @@ func SVG(ts []*tree.Tree, recs []*events.Recons, stepX, stepY int) error {
 				}
 				f := rc.Rec[i].SetR
 				if tv.Nodes[f].Y > tv.Nodes[i].Y {
-					poly.Attr[0].Value = arrow(tv.Nodes[i].X, tv.Nodes[i].Y+2, false)
+					poly.Attr[0].Value = arrow(int(tv.Nodes[i].X), tv.Nodes[i].Y+2, false)
 				} else {
-					poly.Attr[0].Value = arrow(tv.Nodes[i].X, tv.Nodes[i].Y-2, true)
+					poly.Attr[0].Value = arrow(int(tv.Nodes[i].X), tv.Nodes[i].Y-2, true)
 				}
 				e.EncodeToken(poly)
 				e.EncodeToken(poly.End())

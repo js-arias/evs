@@ -29,99 +29,18 @@ const (
 	FoundR
 )
 
-// AddFounder adds founder event to a set of events.
-func AddFounder(events []int) []int {
-	if HasFounder(events) {
-		return events
+// Events makes an event slice.
+func Events() []int {
+	return []int{
+		Vic,
+		SympU,
+		SympL,
+		SympR,
+		PointL,
+		PointR,
+		FoundL,
+		FoundR,
 	}
-	return append(events, FoundL, FoundR)
-}
-
-// AddPoint adds point sympatry to a set of events.
-func AddPoint(events []int) []int {
-	if HasPoint(events) {
-		return events
-	}
-	return append(events, PointL, PointR)
-}
-
-// AddSymp adds full sympatry to a set of events.
-func AddSymp(events []int) []int {
-	if HasSymp(events) {
-		return events
-	}
-	return append(events, SympU, SympL, SympR)
-}
-
-// AddVic adds vicariance to a set of events.
-func AddVic(events []int) []int {
-	if HasVic(events) {
-		return events
-	}
-	return append(events, Vic)
-}
-
-// HasFounder returns true if a set of events include founder event.
-func HasFounder(events []int) bool {
-	l, r := false, false
-	for _, e := range events {
-		switch e {
-		case FoundL:
-			l = true
-		case FoundR:
-			r = true
-		}
-		if l && r {
-			return true
-		}
-	}
-	return false
-}
-
-// HasPoint returns true if a set of events include punctual sympatry.
-func HasPoint(events []int) bool {
-	l, r := false, false
-	for _, e := range events {
-		switch e {
-		case PointL:
-			l = true
-		case PointR:
-			r = true
-		}
-		if l && r {
-			return true
-		}
-	}
-	return false
-}
-
-// HasSymp returns true if a set of events include sympatry.
-func HasSymp(events []int) bool {
-	l, r, u := false, false, false
-	for _, e := range events {
-		switch e {
-		case SympU:
-			u = true
-		case SympL:
-			l = true
-		case SympR:
-			r = true
-		}
-		if u && l && r {
-			return true
-		}
-	}
-	return false
-}
-
-// HasVic returns true if a set of events include vicariance.
-func HasVic(events []int) bool {
-	for _, e := range events {
-		if e == Vic {
-			return true
-		}
-	}
-	return false
 }
 
 const infinityCost = 10000000
@@ -143,19 +62,34 @@ type Recons struct {
 	Tree   *tree.Tree
 	Raster *raster.Raster
 	Rec    []Node
-	Size   int
+
+	UseLen bool
+
+	// events costs
+	Size     float64
+	SympSize float64
+	VicC     float64
+	SympC    float64
+	PointC   float64
+	FoundC   float64
 }
 
 // OR creates an OR reconstruction based on raster and tree data. If scaled is
 // true, then the cost at each node will be scaled by the ancestral
 // distribution.
-func OR(r *raster.Raster, t *tree.Tree, size int) *Recons {
+func OR(r *raster.Raster, t *tree.Tree, size, sympSize float64, useLen bool) *Recons {
 	or := &Recons{
-		ID:     "or",
-		Tree:   t,
-		Raster: r,
-		Rec:    make([]Node, len(t.Nodes)),
-		Size:   size,
+		ID:       "or",
+		Tree:     t,
+		Raster:   r,
+		Rec:      make([]Node, len(t.Nodes)),
+		UseLen:   useLen,
+		Size:     size,
+		SympSize: sympSize,
+		VicC:     1,
+		SympC:    1,
+		PointC:   1,
+		FoundC:   1,
 	}
 	for i := len(t.Nodes) - 1; i >= 0; i-- {
 		n := t.Nodes[i]
@@ -171,6 +105,13 @@ func OR(r *raster.Raster, t *tree.Tree, size int) *Recons {
 			}
 			copy(or.Rec[i].Obs, tx.Obs)
 			copy(or.Rec[i].Fill, tx.Fill)
+			if or.Size > 0 {
+				cost := float64(or.Rec[i].Obs.Count()-1) / or.Size
+				if or.UseLen {
+					cost *= n.Len
+				}
+				or.Rec[i].Cost = cost
+			}
 			continue
 		}
 		var setL, setR *tree.Node
@@ -197,9 +138,12 @@ func OR(r *raster.Raster, t *tree.Tree, size int) *Recons {
 		cv := or.vicariance(i)
 		cs := or.sympatry(i)
 		if or.Size > 0 {
-			sz := or.Rec[i].Obs.Count()
-			cs += float64(sz) / float64(or.Size)
-			cv += float64(sz) / float64(or.Size)
+			csz := (float64(or.Rec[i].Obs.Count()-1) / or.Size)
+			if or.UseLen {
+				csz *= n.Len
+			}
+			cs += csz
+			cv += csz
 		}
 		if cv < cs {
 			or.Rec[i].Flag = Vic
@@ -212,11 +156,12 @@ func OR(r *raster.Raster, t *tree.Tree, size int) *Recons {
 	return or
 }
 
-// Read reads a reconstruction from one or most trees in csv format from an
+// Read reads a reconstruction from one or most trees in tsv format from an
 // input stream.
-func Read(in io.Reader, ras *raster.Raster, ts []*tree.Tree, size int) ([]*Recons, error) {
+func Read(in io.Reader, ras *raster.Raster, ts []*tree.Tree, size, sympSize float64, useLen bool) ([]*Recons, error) {
 	var recs []*Recons
 	r := csv.NewReader(in)
+	r.Comma = '\t'
 	r.TrimLeadingSpace = true
 
 	// reads the file header
@@ -278,7 +223,7 @@ func Read(in io.Reader, ras *raster.Raster, ts []*tree.Tree, size int) ([]*Recon
 			}
 			prev = row[treeF]
 			id = row[ID]
-			nr = OR(ras, t, size)
+			nr = OR(ras, t, size, sympSize, useLen)
 			nr.ID = row[ID]
 			recs = append(recs, nr)
 		}
@@ -342,11 +287,17 @@ func (r *Recons) Cost() float64 {
 // MakeCopy creates a new copy of a reconstruction.
 func (r *Recons) MakeCopy() *Recons {
 	cp := &Recons{
-		ID:     r.ID,
-		Tree:   r.Tree,
-		Raster: r.Raster,
-		Rec:    make([]Node, len(r.Rec)),
-		Size:   r.Size,
+		ID:       r.ID,
+		Tree:     r.Tree,
+		Raster:   r.Raster,
+		Rec:      make([]Node, len(r.Rec)),
+		UseLen:   r.UseLen,
+		Size:     r.Size,
+		VicC:     r.VicC,
+		SympC:    r.SympC,
+		FoundC:   r.FoundC,
+		PointC:   r.PointC,
+		SympSize: r.SympSize,
 	}
 	for i := range r.Rec {
 		cp.Rec[i].Node = r.Rec[i].Node
@@ -362,6 +313,58 @@ func (r *Recons) MakeCopy() *Recons {
 	return cp
 }
 
+// SetVicCost sets a new vicariance cost and updates the reconstruction.
+func (r *Recons) SetVicCost(c float64) {
+	if r.VicC == c {
+		return
+	}
+	r.VicC = c
+	for i := range r.Rec {
+		if r.Rec[i].Flag == Vic {
+			r.DownPass(i)
+		}
+	}
+}
+
+// SetSympCost sets a new sympatry cost and updates the reconstruction.
+func (r *Recons) SetSympCost(c float64) {
+	if r.SympC == c {
+		return
+	}
+	r.SympC = c
+	for i := range r.Rec {
+		if (r.Rec[i].Flag >= SympU) && (r.Rec[i].Flag <= SympR) {
+			r.DownPass(i)
+		}
+	}
+}
+
+// SetPointCost sets a new point cost and updates the reconstruction.
+func (r *Recons) SetPointCost(c float64) {
+	if r.PointC == c {
+		return
+	}
+	r.PointC = c
+	for i := range r.Rec {
+		if (r.Rec[i].Flag == PointL) || (r.Rec[i].Flag == PointR) {
+			r.DownPass(i)
+		}
+	}
+}
+
+// SetFoundCost sets a new founder cost and updates the reconstruction.
+func (r *Recons) SetFoundCost(c float64) {
+	if r.FoundC == c {
+		return
+	}
+	r.FoundC = c
+	for i := range r.Rec {
+		if (r.Rec[i].Flag == FoundL) || (r.Rec[i].Flag == FoundR) {
+			r.DownPass(i)
+		}
+	}
+}
+
 // IsDiff returns true if the the reconstruction r is different from
 // reconstruction cp.
 func (r *Recons) IsDiff(cp *Recons) bool {
@@ -372,6 +375,20 @@ func (r *Recons) IsDiff(cp *Recons) bool {
 		if r.Rec[i].Node.First == nil {
 			continue
 		}
+
+		// All sympatry events are really the same kind of event
+		// so we must test the content of the node, rather than
+		// the raw event
+		if (r.Rec[i].Flag >= SympU) && (r.Rec[i].Flag <= SympR) && (cp.Rec[i].Flag >= SympU) && (cp.Rec[i].Flag <= SympR) {
+			if !r.Rec[i].Obs.Equal(cp.Rec[i].Obs) {
+				return true
+			}
+			if !r.Rec[i].Fill.Equal(cp.Rec[i].Fill) {
+				return true
+			}
+			continue
+		}
+
 		if r.Rec[i].Flag != cp.Rec[i].Flag {
 			return true
 		}
@@ -410,6 +427,14 @@ func (r *Recons) Copy(cp *Recons) {
 		panic("copy can only be made on a reconstruction with the same raster")
 	}
 	r.ID = cp.ID
+	r.UseLen = cp.UseLen
+	r.Size = cp.Size
+	r.VicC = cp.VicC
+	r.SympC = cp.SympC
+	r.FoundC = cp.FoundC
+	r.PointC = cp.PointC
+	r.SympSize = cp.SympSize
+
 	for i := range cp.Rec {
 		copy(r.Rec[i].Obs, cp.Rec[i].Obs)
 		copy(r.Rec[i].Fill, cp.Rec[i].Fill)
@@ -424,6 +449,8 @@ func (r *Recons) Copy(cp *Recons) {
 // header is false, no header will be printed.
 func (r *Recons) Write(out io.Writer, header bool) error {
 	w := csv.NewWriter(out)
+	w.Comma = '\t'
+	w.UseCRLF = true
 	defer w.Flush()
 	if header {
 		err := w.Write([]string{"Tree", "ID", "Node", "Event", "Set"})
@@ -540,8 +567,11 @@ func (r *Recons) optimize(n int) {
 		cost += r.founder(n, setR)
 	}
 	if r.Size > 0 {
-		sz := r.Rec[n].Obs.Count()
-		cost += float64(sz) / float64(r.Size)
+		csz := (float64(r.Rec[n].Obs.Count()-1) / r.Size)
+		if r.UseLen {
+			csz *= r.Rec[n].Node.Len
+		}
+		cost += csz
 	}
 	r.Rec[n].Cost = cost
 }
@@ -555,9 +585,13 @@ func (r *Recons) founder(n, f int) float64 {
 	onlyF := cellF - comF
 
 	if onlyF == 0 {
-		return float64(2*cellF) + 2
+		cellF += 2
 	}
-	return float64(cellF + comF)
+	cost := float64(cellF + comF - 1)
+	if r.UseLen {
+		cost = cost / r.Rec[f].Node.Len
+	}
+	return cost + r.FoundC
 }
 
 // point calculates the cost of a point sympatry event in which one of the
@@ -569,9 +603,13 @@ func (r *Recons) point(n, p int) float64 {
 	onlyP := cellP - comP
 
 	if comP == 0 {
-		return float64(2*cellP) + 2
+		cellP += 2
 	}
-	return float64(cellP + onlyP)
+	cost := float64(cellP + onlyP - 1)
+	if r.UseLen {
+		cost = cost / r.Rec[p].Node.Len
+	}
+	return cost + r.PointC
 }
 
 // sympatry calculates the cost of full sympatry.
@@ -583,12 +621,24 @@ func (r *Recons) sympatry(n int) float64 {
 	cellL := r.Rec[setL].Obs.Count()
 	onlyL := cellL - r.Rec[setL].Obs.Common(r.Rec[n].Fill)
 	notL := cellN - r.Rec[n].Obs.Common(r.Rec[setL].Fill)
+	costL := float64(onlyL + notL)
 
 	cellR := r.Rec[setR].Obs.Count()
 	onlyR := cellR - r.Rec[setR].Obs.Common(r.Rec[n].Fill)
 	notR := cellN - r.Rec[n].Obs.Common(r.Rec[setR].Fill)
+	costR := float64(onlyR + notR)
 
-	return float64(onlyL + notL + onlyR + notR)
+	if r.UseLen {
+		costL = costL / r.Rec[setL].Node.Len
+		costR = costR / r.Rec[setR].Node.Len
+	}
+
+	var extra float64
+	if r.SympSize > 0 {
+		extra = float64(r.Rec[n].Obs.Count()) / r.SympSize
+	}
+
+	return costL + costR + r.SympC + extra
 }
 
 // vicariance calculates the cost of a disjunct set.
@@ -604,20 +654,28 @@ func (r *Recons) vicariance(n int) float64 {
 	comR := r.Rec[setR].Obs.Common(r.Rec[setL].Fill)
 	onlyR := cellR - comR
 
-	cost := float64(comL + comR)
 	if (onlyL == 0) || (onlyR == 0) {
 		if onlyL != 0 {
 			// r is cointained in l.
-			cost += 1
+			comR += 1
 		} else if onlyR != 0 {
 			// l is contained in r.
-			cost += 1
+			comL += 1
 		} else {
 			// both sets are identical
-			cost += 2
+			comL += 1
+			comR += 1
 		}
 	}
-	return cost
+
+	costL := float64(comL)
+	costR := float64(comR)
+	if r.UseLen {
+		costL = costL / r.Rec[setL].Node.Len
+		costR = costR / r.Rec[setR].Node.Len
+	}
+
+	return costL + costR + r.VicC
 }
 
 // Eval store the evaluation of a given reconstruction.

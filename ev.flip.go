@@ -16,10 +16,11 @@ import (
 
 var evFlip = &cmdapp.Command{
 	Run: evFlipRun,
-	UsageLine: `ev.flip [-c|--columns number] [-f|--fill number]
-	[-m|--random number] [--nofound] [--nopoint] [--nosymp] [--novic]
-	[-o|--output file] [-p|--procs number] [-r|--replicates number]
-	[-v|--verbose] [-z|--size number]`,
+	UsageLine: `ev.flip [-b|--brlen] [-c|--columns number] [-f|--fill number]
+	[-m|--random number] [--found number] [--point number] [--symp number]
+	[--vic number] [-o|--output file] [-p|--procs number]
+	[-r|--replicates number] [-v|--verbose] [-z|--size number]
+	[-sympSize number]`,
 	Short: "flip search with four events",
 	Long: `
 Ev.flip searches with the flipping algorithm for the most parsimonious
@@ -32,6 +33,14 @@ The answer will be send to the standard output with the following columns:
 	Set	Identifier of the assigned set
 
 Options are:
+
+    -b
+    --brlen
+      If set, branch lengths will be will be used to downweight pixel changes
+      in a branch (i.e. cost = changes / len), so changes in long branches
+      will be cheaper, and, if -z, --size is used, branch lenghts will be
+      upweight the cost of the size (i.e. cost = (range-size / sizeParam) *
+      len), so having a large size will be costly on longer branches.
 
     -c number
     --column number
@@ -47,12 +56,12 @@ Options are:
       Set the probability (as percentage) of randomly modifying a node in the
       initial OR reconstruction at the start of each replicate. Default = 10.
 
-    --nofound
-    --nopoint
-    --nosymp
-    --novic
-      Prohibits a given type of event for the searches. At least one type of
-      event should be allowed.
+    --found number
+    --point number
+    --symp number
+    --vic number
+      Sets the cost of a given type of event. Event costs should be greater
+      than 0. Default = 1.
 
     -o file
     --output file
@@ -74,26 +83,39 @@ Options are:
 
     -z number
     --size number
-      If set, the indicated the value of the ancestral_range / number will be
-      used as extra-cost on internal nodes.
+      If set, the indicated the value of the ancestral_range_size / number
+      will be used as extra-cost on internal nodes.
+
+    --sympSize number
+      If set, it will add to the cost of a sympatry event, the result of 
+      ancestral_range_size / number.
 	`,
 }
 
 // events flags
 var (
-	numProc int  // -p|--proc
-	numRand int  // -m|--random
-	numReps int  // -r|--replicates
-	szExtra int  // -z|--size
-	noVic   bool // --novic
-	noSymp  bool // --nosymp
-	noPoint bool // -nopoint
-	noFound bool // -nofound
+	numProc   int     // -p|--proc
+	numRand   int     // -m|--random
+	numReps   int     // -r|--replicates
+	brlen     bool    // -b|--brlen
+	szExtra   float64 // -z|--size
+	sympSize  float64 // --sympSize
+	VicCost   float64 // --vic
+	SympCost  float64 // --symp
+	PointCost float64 // --point
+	FoundCost float64 // --found
 )
 
 func setEventFlags(c *cmdapp.Command) {
-	c.Flag.IntVar(&szExtra, "size", 0, "")
-	c.Flag.IntVar(&szExtra, "z", 0, "")
+	c.Flag.Float64Var(&szExtra, "size", 0, "")
+	c.Flag.Float64Var(&szExtra, "z", 0, "")
+	c.Flag.Float64Var(&sympSize, "sympSize", 0, "")
+	c.Flag.Float64Var(&VicCost, "vic", 1, "")
+	c.Flag.Float64Var(&SympCost, "symp", 1, "")
+	c.Flag.Float64Var(&PointCost, "point", 1, "")
+	c.Flag.Float64Var(&FoundCost, "found", 1, "")
+	c.Flag.BoolVar(&brlen, "brlen", false, "")
+	c.Flag.BoolVar(&brlen, "b", false, "")
 }
 
 func init() {
@@ -109,15 +131,11 @@ func init() {
 	evFlip.Flag.IntVar(&numReps, "r", 100, "")
 	evFlip.Flag.BoolVar(&verbose, "verbose", false, "")
 	evFlip.Flag.BoolVar(&verbose, "v", false, "")
-	evFlip.Flag.BoolVar(&noVic, "novic", false, "")
-	evFlip.Flag.BoolVar(&noSymp, "nosymp", false, "")
-	evFlip.Flag.BoolVar(&noPoint, "nopoint", false, "")
-	evFlip.Flag.BoolVar(&noFound, "nofound", false, "")
 }
 
 func evFlipRun(c *cmdapp.Command, args []string) {
-	if noVic && noSymp && noPoint && noFound {
-		fmt.Fprintf(os.Stderr, "%s: at least one event must be allowed\n", c.Name())
+	if (VicCost <= 0) || (SympCost <= 0) || (PointCost <= 0) || (FoundCost <= 0) {
+		fmt.Fprintf(os.Stderr, "%s: event costs should be greater than 0\n", c.Name())
 		os.Exit(1)
 	}
 	o := os.Stdout
@@ -150,35 +168,11 @@ func evFlipRun(c *cmdapp.Command, args []string) {
 	}
 	for _, t := range ts {
 		out := make(chan []*events.Recons)
-		or := events.OR(r, t, szExtra)
-
-		// modify or to take into account the prohibited events
-		if (noVic) && (noSymp) {
-			for i := range or.Rec {
-				if (or.Rec[i].Flag == events.Vic) || (or.Rec[i].Flag == events.SympU) {
-					if noFound {
-						or.Rec[i].Flag = events.PointR
-					} else {
-						or.Rec[i].Flag = events.FoundR
-					}
-					or.DownPass(i)
-				}
-			}
-		} else if noVic {
-			for i := range or.Rec {
-				if or.Rec[i].Flag == events.Vic {
-					or.Rec[i].Flag = events.SympU
-					or.DownPass(i)
-				}
-			}
-		} else if noSymp {
-			for i := range or.Rec {
-				if or.Rec[i].Flag == events.SympU {
-					or.Rec[i].Flag = events.Vic
-					or.DownPass(i)
-				}
-			}
-		}
+		or := events.OR(r, t, szExtra, sympSize, brlen)
+		or.SetVicCost(VicCost)
+		or.SetSympCost(SympCost)
+		or.SetFoundCost(FoundCost)
+		or.SetPointCost(PointCost)
 		go doFlip(or, out)
 		go getBestFlip(or, out, best)
 	}
@@ -238,7 +232,7 @@ func doFlip(or *events.Recons, out chan []*events.Recons) {
 					nodes = append(nodes, i)
 				}
 			}
-			evs := makeEvents()
+			evs := events.Events()
 			for i := 0; i < numReps; i++ {
 				if i > 0 {
 					r.Copy(or)
@@ -312,20 +306,4 @@ func flipRecons(r *events.Recons, nodes, evs []int) float64 {
 	return r.Cost()
 }
 
-// make events slice.
-func makeEvents() []int {
-	var evs []int
-	if !noVic {
-		evs = events.AddVic(evs)
-	}
-	if !noSymp {
-		evs = events.AddSymp(evs)
-	}
-	if !noPoint {
-		evs = events.AddPoint(evs)
-	}
-	if !noFound {
-		evs = events.AddFounder(evs)
-	}
-	return evs
-}
+//

@@ -61,8 +61,8 @@ func main() {
 }
 
 const (
-	treeFileName = "trees.csv"
-	dataFileName = "records.csv"
+	treeFileName = "trees.tab"
+	dataFileName = "records.tab"
 )
 
 func loadData() (*biogeo.DataSet, error) {

@@ -22,6 +22,7 @@ type Node struct {
 	Anc    *Node
 	Sister *Node
 	First  *Node
+	Len    float64
 	Term   string
 }
 
@@ -32,10 +33,11 @@ type Tree struct {
 	Nodes []*Node
 }
 
-// Read reads one or more trees in csv format from an input stream.
+// Read reads one or more trees in tsv format from an input stream.
 func Read(in io.Reader) ([]*Tree, error) {
 	var tr []*Tree
 	r := csv.NewReader(in)
+	r.Comma = '\t'
 	r.TrimLeadingSpace = true
 
 	// reads the file header
@@ -47,6 +49,7 @@ func Read(in io.Reader) ([]*Tree, error) {
 	node := -1
 	anc := -1
 	term := -1
+	lenF := -1
 	for i, v := range h {
 		switch strings.ToLower(v) {
 		case "tree":
@@ -57,6 +60,8 @@ func Read(in io.Reader) ([]*Tree, error) {
 			anc = i
 		case "term", "terminal", "termname":
 			term = i
+		case "length", "len":
+			lenF = i
 		}
 	}
 	if (tree < 0) || (node < 0) || (anc < 0) || (term < 0) {
@@ -100,6 +105,7 @@ func Read(in io.Reader) ([]*Tree, error) {
 			n := &Node{
 				Index: len(t.Nodes),
 				ID:    row[node],
+				Len:   1,
 			}
 			t.Root = n
 			ids[n.ID] = n.Index
@@ -118,11 +124,20 @@ func Read(in io.Reader) ([]*Tree, error) {
 		if len(row[term]) > 0 {
 			tx = strings.Join(strings.Fields(row[term]), " ")
 		}
+		ln := float64(1)
+		if (lenF != -1) && (len(row[lenF]) > 0) {
+			if l, err := strconv.ParseFloat(row[lenF], 64); err == nil {
+				if l >= 0 {
+					ln = l
+				}
+			}
+		}
 		n := &Node{
 			Index: len(t.Nodes),
 			ID:    row[node],
 			Anc:   a,
 			Term:  tx,
+			Len:   ln,
 		}
 		if a.First != nil {
 			for d := a.First; ; d = d.Sister {
@@ -144,9 +159,11 @@ func Read(in io.Reader) ([]*Tree, error) {
 // will not print the column names (the header).
 func (t *Tree) Write(out io.Writer, header bool) error {
 	w := csv.NewWriter(out)
+	w.Comma = '\t'
+	w.UseCRLF = true
 	defer w.Flush()
 	if header {
-		err := w.Write([]string{"Tree", "Node", "Ancestor", "Terminal"})
+		err := w.Write([]string{"Tree", "Node", "Ancestor", "Length", "Terminal"})
 		if err != nil {
 			return err
 		}
@@ -160,6 +177,7 @@ func (t *Tree) Write(out io.Writer, header bool) error {
 			t.ID,
 			n.ID,
 			anc,
+			strconv.FormatFloat(n.Len, 'f', 6, 64),
 			n.Term,
 		}
 		err := w.Write(rec)
@@ -197,6 +215,7 @@ func (t *Tree) readNode(r *bufio.Reader, anc *Node) (*Node, error) {
 		Index: len(t.Nodes),
 		ID:    strconv.FormatInt(int64(len(t.Nodes)), 10),
 		Anc:   anc,
+		Len:   1,
 	}
 	t.Nodes = append(t.Nodes, n)
 	num := 0
@@ -213,9 +232,15 @@ func (t *Tree) readNode(r *bufio.Reader, anc *Node) (*Node, error) {
 			continue
 		}
 		if r1 == ':' {
-			err = skipLen(r)
+			if last == nil {
+				return nil, errors.New("unexpected branch length")
+			}
+			ln, err := readLen(r)
 			if err != nil {
 				return nil, err
+			}
+			if ln >= 0 {
+				last.Len = ln
 			}
 			continue
 		}
@@ -247,6 +272,7 @@ func (t *Tree) readNode(r *bufio.Reader, anc *Node) (*Node, error) {
 			ID:    strconv.FormatInt(int64(len(t.Nodes)), 10),
 			Anc:   n,
 			Term:  tx,
+			Len:   1,
 		}
 		t.Nodes = append(t.Nodes, desc)
 		num++
@@ -336,12 +362,13 @@ func readBlock(r *bufio.Reader, delim rune) (string, error) {
 	return string(s), nil
 }
 
-// skipLen skips the lenght of the node, if defined.
-func skipLen(r *bufio.Reader) error {
+// readLen reads the lenght of the node, if defined.
+func readLen(r *bufio.Reader) (float64, error) {
+	var s []rune
 	for {
 		r1, _, err := r.ReadRune()
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if unicode.IsSpace(r1) || (r1 == ',') {
 			break
@@ -350,6 +377,7 @@ func skipLen(r *bufio.Reader) error {
 			r.UnreadRune()
 			break
 		}
+		s = append(s, r1)
 	}
-	return nil
+	return strconv.ParseFloat(string(s), 64)
 }

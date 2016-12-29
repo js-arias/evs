@@ -60,10 +60,11 @@ func (d *DataSet) Taxon(name string) *Taxon {
 	return nil
 }
 
-// Read reads data from an input stream in csv format.
+// Read reads data from an input stream in tsv format.
 func Read(in io.Reader) (*DataSet, error) {
 	d := &DataSet{Names: make(map[string]*Taxon)}
 	r := csv.NewReader(in)
+	r.Comma = '\t'
 	r.TrimLeadingSpace = true
 
 	// reads the file header

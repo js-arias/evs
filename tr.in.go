@@ -19,13 +19,14 @@ var trIn = &cmdapp.Command{
 	Long: `
 Tr.in reads a tree in parenthetical notation, assuming that each terminal is
 stored by its name (underline character will be transformed into space), and
-prints in as a cvs table that contains the tree.
+prints in as a tab table that contains the tree.
 
 The output file, has the following columns:
 	Tree		Tree identifier
 	Node		Node identifier
 	Ancestor	Identifier of the ancestor of the node
 	Terminal	The name of the terminal taxon
+	Length		The length of the branch
 The table must be sorted in a form that each node is read only after its
 ancestor was already readed.
 
@@ -114,23 +115,5 @@ func trInRun(c *cmdapp.Command, args []string) {
 			os.Exit(1)
 		}
 		head = false
-	}
-}
-
-var trLs = &cmdapp.Command{
-	Run:       trLsRun,
-	UsageLine: "tr.ls",
-	Short:     "list trees",
-	Long:      "Tr.ls list all trees in the 'trees.csv' file.",
-}
-
-func trLsRun(c *cmdapp.Command, args []string) {
-	ls, err := loadTrees()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", c.Name(), err)
-		os.Exit(1)
-	}
-	for _, t := range ls {
-		fmt.Printf("%s\n", t.ID)
 	}
 }

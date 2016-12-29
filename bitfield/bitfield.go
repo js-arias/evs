@@ -76,3 +76,13 @@ func (f Bitfield) Reset() {
 		f[i] = 0
 	}
 }
+
+// Equal returns true if all bits on both bitfields are equal.
+func (f Bitfield) Equal(b Bitfield) bool {
+	for i, x := range b {
+		if f[i] != x {
+			return false
+		}
+	}
+	return true
+}

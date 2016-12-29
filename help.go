@@ -8,7 +8,7 @@ import "github.com/js-arias/evs/cmdapp"
 
 var about = &cmdapp.Command{
 	UsageLine: "about",
-	Short:     "about Evs",
+	Short:     "about evs",
 	Long: `
 Evs implements the geographically explicit event model for phylogenetic
 biogeography using explicit terminal ranges. The main objective of the
@@ -29,7 +29,7 @@ var recordsHelp = &cmdapp.Command{
 	UsageLine: "records",
 	Short:     "taxon-records file",
 	Long: `
-In Evs the taxon and records input is from a file is called 'records.csv'. The
+In evs the taxon and records input is from a file is called 'records.tab'. The
 file must have at least the following columns:
 
     Name
@@ -49,7 +49,7 @@ var treesHelp = &cmdapp.Command{
 	UsageLine: "trees",
 	Short:     "trees file",
 	Long: `
-In Evs the tree data is stored in a file called 'trees.csv'. The file has at
+In evs the tree data is stored in a file called 'trees.tab'. The file has at
 least the following columns:
 
     Tree

@@ -11,20 +11,20 @@ import (
 	"github.com/js-arias/evs/cmdapp"
 )
 
-var txLs = &cmdapp.Command{
-	Run:       txLsRun,
-	UsageLine: "tx.ls",
-	Short:     "list terminal taxons",
-	Long:      "Tx.ls list all terminals in the 'records.tab' file.",
+var trLs = &cmdapp.Command{
+	Run:       trLsRun,
+	UsageLine: "tr.ls",
+	Short:     "list trees",
+	Long:      "Tr.ls list all trees in the 'trees.csv' file.",
 }
 
-func txLsRun(c *cmdapp.Command, args []string) {
-	d, err := loadData()
+func trLsRun(c *cmdapp.Command, args []string) {
+	ls, err := loadTrees()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", c.Name(), err)
 		os.Exit(1)
 	}
-	for _, tx := range d.Ls {
-		fmt.Printf("%s\n", tx.Name)
+	for _, t := range ls {
+		fmt.Printf("%s\n", t.ID)
 	}
 }

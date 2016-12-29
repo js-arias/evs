@@ -24,7 +24,7 @@ import (
 
 var evMap = &cmdapp.Command{
 	Run:       evMapRun,
-	UsageLine: `ev.map [-i|--input file] [<imagemap>]`,
+	UsageLine: `ev.map [-i|--input file] [-s|--size number] [<imagemap>]`,
 	Short:     "print reconstructions in a map",
 	Long: `
 Ev.map reads a reconstruction and export it as png files. Each node is printed
@@ -39,6 +39,10 @@ Options are:
     -i file
     --input file
       Reads from an input file instead of standard input.
+      
+    -s number
+    --size number
+      Sets the size of each record in the ouput map. Default = 2
 
     <imagemap>
       A map in an image format (e.g. jpg, png) with an equirectangular
@@ -46,9 +50,13 @@ Options are:
 	`,
 }
 
+var recSize int
+
 func init() {
 	evMap.Flag.StringVar(&inFile, "input", "", "")
 	evMap.Flag.StringVar(&inFile, "i", "", "")
+	evMap.Flag.IntVar(&recSize, "size", 2, "")
+	evMap.Flag.IntVar(&recSize, "s", 2, "")
 }
 
 func evMapRun(c *cmdapp.Command, args []string) {
@@ -72,13 +80,16 @@ func evMapRun(c *cmdapp.Command, args []string) {
 		}
 		defer f.Close()
 	}
-	recs, err := events.Read(f, r, ts, szExtra)
+	recs, err := events.Read(f, r, ts, szExtra, sympSize, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", c.Name(), err)
 		os.Exit(1)
 	}
+	if recSize < 1 {
+		recSize = 2
+	}
 
-	err = treesvg.SVG(ts, nil, 0, 0)
+	err = treesvg.SVG(ts, nil, 0, 0, false)
 
 	// determines the boudaries of the geography
 	minLat := float64(biogeo.MaxLat)
@@ -209,13 +220,13 @@ func evMapRun(c *cmdapp.Command, args []string) {
 					for _, g := range tx.Recs {
 						c := int((180+g.Lon)*scaleX) - originX
 						r := int((90-g.Lat)*scaleY) - originY
-						for x := c - 3; x <= c+3; x++ {
-							for y := r - 3; y <= r+3; y++ {
+						for x := c - recSize - 1; x <= c+recSize+1; x++ {
+							for y := r - recSize - 1; y <= r+recSize+1; y++ {
 								dest.Set(x, y, black)
 							}
 						}
-						for x := c - 2; x <= c+2; x++ {
-							for y := r - 2; y <= r+2; y++ {
+						for x := c - recSize; x <= c+recSize; x++ {
+							for y := r - recSize; y <= r+recSize; y++ {
 								dest.Set(x, y, cr)
 							}
 						}

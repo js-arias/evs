@@ -70,12 +70,12 @@ func evTreeRun(c *cmdapp.Command, args []string) {
 		}
 		defer f.Close()
 	}
-	recs, err := events.Read(f, r, ts, szExtra)
+	recs, err := events.Read(f, r, ts, szExtra, sympSize, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", c.Name(), err)
 		os.Exit(1)
 	}
-	err = treesvg.SVG(ts, recs, stepX, stepY)
+	err = treesvg.SVG(ts, recs, stepX, stepY, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", c.Name(), err)
 		os.Exit(1)

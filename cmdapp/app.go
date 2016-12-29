@@ -60,7 +60,7 @@ func Run() {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "%s: unknown subcommand %s\nRun '%s help' for usage.\n", Name(), Name())
+	fmt.Fprintf(os.Stderr, "%s: unknown subcommand %s\nRun '%s help' for usage.\n", Name(), args[0], Name())
 	os.Exit(ExitArgs)
 }
 
